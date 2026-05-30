@@ -28,6 +28,14 @@ project(fheroes2 VERSION ${FHEROES2_VERSION} LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(powerpc|ppc)$" OR CMAKE_OSX_ARCHITECTURES MATCHES "^(powerpc|ppc)$")
+    message(STATUS "Enabling PowerPC AltiVec extensions")
+    add_compile_options(-maltivec)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        add_compile_options(-mabi=altivec)
+    endif()
+endif()
+
 include(CMakeDependentOption)
 include(GNUInstallDirs)
 

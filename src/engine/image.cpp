@@ -20,6 +20,10 @@
 
 #include "image.h"
 
+#if defined(__ALTIVEC__)
+#include <altivec.h>
+#endif
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -1289,6 +1293,44 @@ namespace fheroes2
                     uint8_t * imageOutX = imageOutY;
                     const uint8_t * imageInXEnd = imageInX + width;
 
+#if defined(__ALTIVEC__)
+                    while ( imageInX + 15 < imageInXEnd ) {
+                        vector unsigned char t = vec_ld( 0, transformInX );
+                        vector unsigned char zeros = vec_splat_u8( 0 );
+                        vector unsigned char ones = vec_splat_u8( 1 );
+                        vector bool char is_zero = vec_cmpeq( t, zeros );
+                        vector bool char is_one = vec_cmpeq( t, ones );
+
+                        if ( vec_all_eq( is_one, (vector bool char)vec_splat_s8(-1) ) ) {
+                            // All transparent
+                            imageInX += 16;
+                            transformInX += 16;
+                            imageOutX += 16;
+                            continue;
+                        }
+
+                        if ( vec_all_eq( is_zero, (vector bool char)vec_splat_s8(-1) ) ) {
+                            // All opaque, copy
+                            vector unsigned char in_vec = vec_ld( 0, imageInX );
+                            vec_st( in_vec, 0, imageOutX );
+                            imageInX += 16;
+                            transformInX += 16;
+                            imageOutX += 16;
+                            continue;
+                        }
+
+                        for ( int i = 0; i < 16; ++i, ++imageInX, ++transformInX, ++imageOutX ) {
+                            if ( *transformInX > 0 ) {
+                                if ( *transformInX != 1 ) {
+                                    *imageOutX = *( transformTable + ( *transformInX ) * 256 + *imageOutX );
+                                }
+                            } else {
+                                *imageOutX = *imageInX;
+                            }
+                        }
+                    }
+#endif
+
                     for ( ; imageInX != imageInXEnd; ++imageInX, ++transformInX, ++imageOutX ) {
                         if ( *transformInX > 0 ) { // apply a transformation
                             if ( *transformInX != 1 ) { // skip pixel
@@ -1310,6 +1352,45 @@ namespace fheroes2
                     uint8_t * imageOutX = imageOutY;
                     uint8_t * transformOutX = transformOutY;
                     const uint8_t * imageInXEnd = imageInX + width;
+
+#if defined(__ALTIVEC__)
+                    while ( imageInX + 15 < imageInXEnd ) {
+                        vector unsigned char t = vec_ld( 0, transformInX );
+                        vector unsigned char zeros = vec_splat_u8( 0 );
+                        vector unsigned char ones = vec_splat_u8( 1 );
+                        vector bool char is_zero = vec_cmpeq( t, zeros );
+                        vector bool char is_one = vec_cmpeq( t, ones );
+
+                        if ( vec_all_eq( is_one, (vector bool char)vec_splat_s8(-1) ) ) {
+                            imageInX += 16;
+                            transformInX += 16;
+                            imageOutX += 16;
+                            transformOutX += 16;
+                            continue;
+                        }
+
+                        if ( vec_all_eq( is_zero, (vector bool char)vec_splat_s8(-1) ) ) {
+                            vector unsigned char in_vec = vec_ld( 0, imageInX );
+                            vec_st( in_vec, 0, imageOutX );
+                            vec_st( zeros, 0, transformOutX );
+                            imageInX += 16;
+                            transformInX += 16;
+                            imageOutX += 16;
+                            transformOutX += 16;
+                            continue;
+                        }
+
+                        for ( int i = 0; i < 16; ++i, ++imageInX, ++transformInX, ++imageOutX, ++transformOutX ) {
+                            if ( *transformInX == 1 ) continue;
+                            if ( *transformInX > 0 && *transformOutX == 0 ) {
+                                *imageOutX = *( transformTable + ( *transformInX ) * 256 + *imageOutX );
+                            } else {
+                                *transformOutX = *transformInX;
+                                *imageOutX = *imageInX;
+                            }
+                        }
+                    }
+#endif
 
                     for ( ; imageInX != imageInXEnd; ++imageInX, ++transformInX, ++imageOutX, ++transformOutX ) {
                         if ( *transformInX == 1 ) { // skip pixel
@@ -1346,13 +1427,38 @@ namespace fheroes2
         const size_t size = static_cast<size_t>( width ) * height;
         if ( out.singleLayer() ) {
             // Copy only image layer. Input image can be single- or double-layer.
+#if defined(__ALTIVEC__)
+            size_t i = 0;
+            for ( ; i + 15 < size; i += 16 ) {
+                vector unsigned char v = vec_ld( 0, in.image() + i );
+                vec_st( v, 0, out.image() + i );
+            }
+            for ( ; i < size; ++i ) {
+                out.image()[i] = in.image()[i];
+            }
+#else
             memcpy( out.image(), in.image(), size );
+#endif
         }
         else {
             assert( in.singleLayer() );
             // Copy image layer and set transform to non-transparent mode.
+#if defined(__ALTIVEC__)
+            size_t i = 0;
+            vector unsigned char zeros = vec_splat_u8( 0 );
+            for ( ; i + 15 < size; i += 16 ) {
+                vector unsigned char v = vec_ld( 0, in.image() + i );
+                vec_st( v, 0, out.image() + i );
+                vec_st( zeros, 0, out.transform() + i );
+            }
+            for ( ; i < size; ++i ) {
+                out.image()[i] = in.image()[i];
+                out.transform()[i] = 0;
+            }
+#else
             memcpy( out.image(), in.image(), size );
             memset( out.transform(), static_cast<uint8_t>( 0 ), size );
+#endif
         }
     }
 
