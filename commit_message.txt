@@ -1,0 +1,27 @@
+Fix unaligned AltiVec loads and revert problematic optimizations in image.cpp
+
+This commit addresses several issues with the recent AltiVec
+optimizations for iMac G4 in `src/engine/image.cpp`:
+
+1. Unaligned Memory Access in `Blit`:
+   PowerPC AltiVec instructions (`vec_ld`, `vec_st`) ignore the lower 4
+   bits of addresses, enforcing strict 16-byte alignment. Since `imageInX`
+   and `imageOutX` can have arbitrary alignments during `Blit`, direct
+   usage caused memory corruption. We now use `vec_perm` along with
+   `vec_lvsl` to perform correct unaligned loads. Unaligned stores inside
+   the optimization loop were replaced by standard `memcpy` and `memset` to
+   avoid complex AltiVec store logic while preserving the performance
+   benefit of bulk-skipping transparent pixels.
+
+2. Reverted `Copy` to `memcpy`:
+   The AltiVec optimizations replacing `memcpy` inside `Copy` were
+   reverted. `libc` implementations of `memcpy` on macOS/PowerPC are
+   already highly optimized and safely handle unaligned data natively,
+   making custom manual AltiVec loops counterproductive.
+
+3. Verified `ApplyAlpha`:
+   `ApplyAlpha` logic remains untouched. It uses an integer division loop
+   (`red / 255`) and delegates to `ApplyRawPalette`. AltiVec lacks integer
+   division instructions, and vectorizing a 256-element look-up table via
+   `vec_perm` (which only takes 16-byte operands) is impractical and would
+   be slower than a scalar approach.
