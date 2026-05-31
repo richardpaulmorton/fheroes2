@@ -1295,7 +1295,9 @@ namespace fheroes2
 
 #if defined(__ALTIVEC__)
                     while ( imageInX + 15 < imageInXEnd ) {
-                        vector unsigned char t = vec_ld( 0, transformInX );
+                        vector unsigned char t1 = vec_ld( 0, transformInX );
+                        vector unsigned char t2 = vec_ld( 15, transformInX );
+                        vector unsigned char t = vec_perm( t1, t2, vec_lvsl( 0, transformInX ) );
                         vector unsigned char zeros = vec_splat_u8( 0 );
                         vector unsigned char ones = vec_splat_u8( 1 );
                         vector bool char is_zero = vec_cmpeq( t, zeros );
@@ -1311,8 +1313,7 @@ namespace fheroes2
 
                         if ( vec_all_eq( is_zero, (vector bool char)vec_splat_s8(-1) ) ) {
                             // All opaque, copy
-                            vector unsigned char in_vec = vec_ld( 0, imageInX );
-                            vec_st( in_vec, 0, imageOutX );
+                            memcpy( imageOutX, imageInX, 16 );
                             imageInX += 16;
                             transformInX += 16;
                             imageOutX += 16;
@@ -1355,7 +1356,9 @@ namespace fheroes2
 
 #if defined(__ALTIVEC__)
                     while ( imageInX + 15 < imageInXEnd ) {
-                        vector unsigned char t = vec_ld( 0, transformInX );
+                        vector unsigned char t1 = vec_ld( 0, transformInX );
+                        vector unsigned char t2 = vec_ld( 15, transformInX );
+                        vector unsigned char t = vec_perm( t1, t2, vec_lvsl( 0, transformInX ) );
                         vector unsigned char zeros = vec_splat_u8( 0 );
                         vector unsigned char ones = vec_splat_u8( 1 );
                         vector bool char is_zero = vec_cmpeq( t, zeros );
@@ -1370,9 +1373,8 @@ namespace fheroes2
                         }
 
                         if ( vec_all_eq( is_zero, (vector bool char)vec_splat_s8(-1) ) ) {
-                            vector unsigned char in_vec = vec_ld( 0, imageInX );
-                            vec_st( in_vec, 0, imageOutX );
-                            vec_st( zeros, 0, transformOutX );
+                            memcpy( imageOutX, imageInX, 16 );
+                            memset( transformOutX, 0, 16 );
                             imageInX += 16;
                             transformInX += 16;
                             imageOutX += 16;
@@ -1427,38 +1429,13 @@ namespace fheroes2
         const size_t size = static_cast<size_t>( width ) * height;
         if ( out.singleLayer() ) {
             // Copy only image layer. Input image can be single- or double-layer.
-#if defined(__ALTIVEC__)
-            size_t i = 0;
-            for ( ; i + 15 < size; i += 16 ) {
-                vector unsigned char v = vec_ld( 0, in.image() + i );
-                vec_st( v, 0, out.image() + i );
-            }
-            for ( ; i < size; ++i ) {
-                out.image()[i] = in.image()[i];
-            }
-#else
             memcpy( out.image(), in.image(), size );
-#endif
         }
         else {
             assert( in.singleLayer() );
             // Copy image layer and set transform to non-transparent mode.
-#if defined(__ALTIVEC__)
-            size_t i = 0;
-            vector unsigned char zeros = vec_splat_u8( 0 );
-            for ( ; i + 15 < size; i += 16 ) {
-                vector unsigned char v = vec_ld( 0, in.image() + i );
-                vec_st( v, 0, out.image() + i );
-                vec_st( zeros, 0, out.transform() + i );
-            }
-            for ( ; i < size; ++i ) {
-                out.image()[i] = in.image()[i];
-                out.transform()[i] = 0;
-            }
-#else
             memcpy( out.image(), in.image(), size );
             memset( out.transform(), static_cast<uint8_t>( 0 ), size );
-#endif
         }
     }
 
